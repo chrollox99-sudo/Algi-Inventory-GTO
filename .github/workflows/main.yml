@@ -10,16 +10,31 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Extract GOR01 project ZIP
+      - name: Find and extract GOR01 project ZIP
+        shell: bash
         run: |
-          test -s GOR01-Android-APK-Project.zip
+          ZIP_FILE="$(find . -maxdepth 1 -type f -iname '*.zip' -printf '%f\n' | head -n 1)"
+          if [ -z "$ZIP_FILE" ]; then
+            echo 'ERROR: Tidak ada file ZIP proyek di folder utama repository.'
+            echo 'Upload ZIP proyek ke halaman utama repository, bukan ke folder.'
+            exit 1
+          fi
+          echo "Menggunakan arsip: $ZIP_FILE"
           mkdir -p /tmp/gor01-project
-          unzip -oq GOR01-Android-APK-Project.zip -d /tmp/gor01-project
-          test -d /tmp/gor01-project/android
-          HTML_FILE="$(find /tmp/gor01-project -maxdepth 2 -type f -name '*.html' | head -n 1)"
-          test -n "$HTML_FILE"
+          unzip -oq "$ZIP_FILE" -d /tmp/gor01-project
+          ANDROID_DIR="$(find /tmp/gor01-project -type f -name 'settings.gradle' -printf '%h\n' | head -n 1)"
+          if [ -z "$ANDROID_DIR" ]; then
+            echo 'ERROR: settings.gradle tidak ditemukan di dalam ZIP.'
+            exit 1
+          fi
+          HTML_FILE="$(find /tmp/gor01-project -type f -iname '*.html' | head -n 1)"
+          if [ -z "$HTML_FILE" ]; then
+            echo 'ERROR: File HTML aplikasi tidak ditemukan di dalam ZIP.'
+            exit 1
+          fi
+          mkdir -p android
+          cp -a "$ANDROID_DIR"/. android/
           mkdir -p android/app/src/main/assets
-          cp -a /tmp/gor01-project/android/. android/
           cp "$HTML_FILE" android/app/src/main/assets/index.html
       - uses: actions/setup-java@v4
         with:
@@ -32,15 +47,15 @@ jobs:
       - name: Install Android SDK platform
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
       - name: Bundle JavaScript libraries into APK
+        shell: bash
         run: |
           mkdir -p android/app/src/main/assets/vendor
           curl -fL --retry 3 'https://cdn.tailwindcss.com' -o android/app/src/main/assets/vendor/tailwind.js
           curl -fL --retry 3 'https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js' -o android/app/src/main/assets/vendor/xlsx.js
           curl -fL --retry 3 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js' -o android/app/src/main/assets/vendor/html5-qrcode.js
-          curl -fL --retry 3 'https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js' -o android/app/src/main/assets/vendor/jsbarcode.js
           test -s android/app/src/main/assets/vendor/xlsx.js
           test -s android/app/src/main/assets/vendor/html5-qrcode.js
-          sed -i 's#https://cdn.tailwindcss.com#vendor/tailwind.js#g; s#<script src="xlsx.js"></script>#<script src="vendor/xlsx.js"></script>#g; s#https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js#vendor/html5-qrcode.js#g; s#https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js#vendor/jsbarcode.js#g' android/app/src/main/assets/index.html
+          sed -i 's#https://cdn.tailwindcss.com#vendor/tailwind.js#g; s#https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js#vendor/xlsx.js#g; s#https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js#vendor/html5-qrcode.js#g' android/app/src/main/assets/index.html
           sed -i '/fonts.googleapis.com\/css2/d; /fonts.gstatic.com/d' android/app/src/main/assets/index.html
           grep -q 'vendor/xlsx.js' android/app/src/main/assets/index.html
           grep -q 'vendor/html5-qrcode.js' android/app/src/main/assets/index.html
@@ -51,3 +66,4 @@ jobs:
           name: GOR01-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
+          
