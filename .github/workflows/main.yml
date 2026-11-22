@@ -1,31 +1,42 @@
 name: Build GOR01 APK
+
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [main]
+
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
-      - name: Extract project ZIP
+
+      - name: Extract Android project
         run: |
-          unzip -q GOR01-Android-APK-Project.zip
-          mkdir -p android/app/src/main/assets
-          cp 'gor01/GOR01 Spareparts Inventory - Stok & Keluar Harian.html' android/app/src/main/assets/index.html
+          unzip -q GOR01-Android-APK-Project.zip -d project
+          PROJECT_DIR=$(find project -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit | xargs dirname)
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
+      - uses: actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
       - uses: android-actions/setup-android@v3
-      - name: Install Android SDK
-        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
-      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install SDK
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
       - name: Build APK
-        run: gradle -p android assembleDebug
-      - name: Upload APK artifact
+        run: gradle -p "$PROJECT_DIR" assembleDebug
+
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: GOR01-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-          
+          path: project/**/build/outputs/apk/debug/*.apk
