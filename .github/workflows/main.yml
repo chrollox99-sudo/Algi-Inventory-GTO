@@ -1,45 +1,53 @@
-name: Build GOR01 APK
-
+name: Build GOR01 Android APK
 on:
   workflow_dispatch:
   push:
-    branches: [main]
-
+    branches: [ main ]
+permissions:
+  contents: read
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: Extract project
+      - name: Extract GOR01 project ZIP
         run: |
-          unzip -q GOR01-Android-APK-Project.zip -d project
-          PROJECT_DIR=$(find project -name settings.gradle -print -quit | xargs dirname)
-          HTML_FILE=$(find project -name '*.html' -print -quit)
-          mkdir -p "$PROJECT_DIR/app/src/main/assets"
-          cp "$HTML_FILE" "$PROJECT_DIR/app/src/main/assets/index.html"
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
+          test -s GOR01-Android-APK-Project.zip
+          mkdir -p /tmp/gor01-project
+          unzip -oq GOR01-Android-APK-Project.zip -d /tmp/gor01-project
+          test -d /tmp/gor01-project/android
+          HTML_FILE="$(find /tmp/gor01-project -maxdepth 2 -type f -name '*.html' | head -n 1)"
+          test -n "$HTML_FILE"
+          mkdir -p android/app/src/main/assets
+          cp -a /tmp/gor01-project/android/. android/
+          cp "$HTML_FILE" android/app/src/main/assets/index.html
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
+      - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-
-      - uses: android-actions/setup-android@v4
-
-      - name: Install SDK
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
-
+      - name: Install Android SDK platform
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Bundle JavaScript libraries into APK
+        run: |
+          mkdir -p android/app/src/main/assets/vendor
+          curl -fL --retry 3 'https://cdn.tailwindcss.com' -o android/app/src/main/assets/vendor/tailwind.js
+          curl -fL --retry 3 'https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js' -o android/app/src/main/assets/vendor/xlsx.js
+          curl -fL --retry 3 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js' -o android/app/src/main/assets/vendor/html5-qrcode.js
+          curl -fL --retry 3 'https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js' -o android/app/src/main/assets/vendor/jsbarcode.js
+          test -s android/app/src/main/assets/vendor/xlsx.js
+          test -s android/app/src/main/assets/vendor/html5-qrcode.js
+          sed -i 's#https://cdn.tailwindcss.com#vendor/tailwind.js#g; s#<script src="xlsx.js"></script>#<script src="vendor/xlsx.js"></script>#g; s#https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js#vendor/html5-qrcode.js#g; s#https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js#vendor/jsbarcode.js#g' android/app/src/main/assets/index.html
+          sed -i '/fonts.googleapis.com\/css2/d; /fonts.gstatic.com/d' android/app/src/main/assets/index.html
+          grep -q 'vendor/xlsx.js' android/app/src/main/assets/index.html
+          grep -q 'vendor/html5-qrcode.js' android/app/src/main/assets/index.html
       - name: Build APK
-        run: gradle -p "$PROJECT_DIR" assembleDebug
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+        run: cd android && gradle --no-daemon clean assembleDebug
+      - uses: actions/upload-artifact@v4
         with:
           name: GOR01-APK
-          path: project/**/build/outputs/apk/debug/*.apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
