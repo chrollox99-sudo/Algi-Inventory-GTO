@@ -12,10 +12,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Extract Android project
+      - name: Extract project
         run: |
           unzip -q GOR01-Android-APK-Project.zip -d project
-          PROJECT_DIR=$(find project -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit | xargs dirname)
+          PROJECT_DIR=$(find project -name settings.gradle -print -quit | xargs dirname)
+          HTML_FILE=$(find project -name '*.html' -print -quit)
+          mkdir -p "$PROJECT_DIR/app/src/main/assets"
+          cp "$HTML_FILE" "$PROJECT_DIR/app/src/main/assets/index.html"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
       - uses: actions/setup-java@v4
